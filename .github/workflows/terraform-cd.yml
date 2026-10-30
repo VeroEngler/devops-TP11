@@ -1,0 +1,38 @@
+name: Terraform CD (Automated Apply)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - 'modules/**'
+
+jobs:
+  apply:
+    name: Terraform Apply (Producción)
+    runs-on: self-hosted # O el host donde reside el demonio de Docker
+    environment:
+      name: production
+
+    steps:
+      - name: 1. Checkout del código
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: 3. Inicializar Proveedor y Backend
+        run: terraform init
+
+      - name: 4. Aplicar Cambios Desatendidos (terraform apply)
+        run: |
+          terraform apply -auto-approve -var-file=envs/prod/terraform.tfvars
+
+      - name: 5. Exponer y Auditar Outputs
+        run: |
+          echo "=== INFRAESTRUCTURA DESPLEGADA CON ÉXITO ==="
+          terraform output -json

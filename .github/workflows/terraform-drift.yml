@@ -1,0 +1,53 @@
+name: Terraform Drift Detection (Auditoría Recurrente)
+
+on:
+  schedule:
+    # Se ejecuta todos los días a las 03:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Permite ejecución manual para pruebas en laboratorio
+
+jobs:
+  detect-drift:
+    name: Auditar Desvíos de Infraestructura
+    runs-on: self-hosted
+
+    steps:
+      - name: 1. Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 2. Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: 3. Inicializar Terraform
+        run: terraform init
+
+      - name: 4. Evaluar Deriva contra el Entorno Real
+        id: check_drift
+        run: |
+          echo "Consultando estado actual de recursos en Docker..."
+          # -detailed-exitcode devuelve 2 si hay diferencias entre código y realidad
+          set +e
+          terraform plan -detailed-exitcode -var-file=envs/prod/terraform.tfvars -no-color > /tmp/drift_report.txt
+          EXIT_CODE=$?
+          set -e
+
+          echo "Código retornado por terraform plan: $EXIT_CODE"
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+
+      - name: 5. Actuar ante Deriva Detectada
+        if: steps.check_drift.outputs.exit_code == '2'
+        run: |
+          echo "🚨 ALERTA CRÍTICA: Se detectó deriva de infraestructura (Drift) 🚨"
+          echo "Alguien modificó recursos directamente en el host sin registrar el cambio en Git."
+          echo "══════════════════════════════════════════════════════════"
+          cat /tmp/drift_report.txt | head -n 40
+          echo "══════════════════════════════════════════════════════════"
+          echo "Para solucionar la deriva, aplique 'terraform apply' para reconciliar el estado deseado."
+          exit 1
+
+      - name: 6. Confirmación de Consistencia
+        if: steps.check_drift.outputs.exit_code == '0'
+        run: |
+          echo "✅ Estado en armonía: 0 desvíos detectados entre Git y el host."
