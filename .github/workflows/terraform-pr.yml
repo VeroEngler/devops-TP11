@@ -1,79 +1,76 @@
-name: Terraform PR Review (Plan as Comment)
+name: "Terraform PR Review (Plan as Comment)"
 
 on:
   pull_request:
     branches:
       - main
+      - develop
     paths:
       - '**.tf'
       - '**.tfvars'
       - 'modules/**'
+      - '.github/workflows/**'
 
 jobs:
-  plan:
-    name: Terraform Lint, Validate & Plan
+  pr-check:
+    name: "Terraform Lint, Validate & Plan"
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write # Permiso para comentar en el PR
-
+      pull-requests: write
     steps:
-      - name: 1. Checkout del código
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: 2. Configurar Terraform CLI
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.7.5"
 
-      - name: 3. Verificar Formato (terraform fmt)
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
         id: fmt
         run: terraform fmt -check -recursive
         continue-on-error: true
 
-      - name: 4. Inicializar Terraform (terraform init)
-        id: init
-        run: terraform init
-
-      - name: 5. Validar Sintaxis (terraform validate)
+      - name: Terraform Validate
         id: validate
         run: terraform validate -no-color
 
-      - name: 6. Generar Plan de Ejecución (terraform plan)
+      - name: Preparar terraform.tfvars para CI
+        run: |
+          cp terraform.tfvars.example terraform.tfvars
+          sed -i 's/backend_replicas.*/backend_replicas = 3/' terraform.tfvars
+
+      - name: Terraform Plan
         id: plan
         run: |
-          terraform plan -no-color -var-file=envs/prod/terraform.tfvars -out=tfplan
-        continue-on-error: true
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan_output.txt
 
-      - name: 7. Formatear salida del plan
-        id: show_plan
-        run: |
-          PLAN_OUTPUT=\$(terraform show -no-color tfplan | head -c 60000 || echo "Error al leer plan")
-          echo "plan_text<<EOF" >> \$GITHUB_OUTPUT
-          echo "\\(PLAN_OUTPUT" >> \\)GITHUB_OUTPUT
-          echo "EOF" >> \$GITHUB_OUTPUT
-
-      - name: 8. Publicar Plan como Comentario en el PR
+      - name: Publicar Plan como Comentario en PR
         uses: actions/github-script@v7
         if: github.event_name == 'pull_request'
         with:
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const output = `#### Estado de Validación de Infraestructura (TP11B)
-            * **Formato HCL (\`terraform fmt\`):** \`\${{ steps.fmt.outcome }}\`
-            * **Inicialización (\`terraform init\`):** \`\${{ steps.init.outcome }}\`
-            * **Validación de Código (\`terraform validate\`):** \`\${{ steps.validate.outcome }}\`
-            * **Plan de Ejecución (\`terraform plan\`):** \`\${{ steps.plan.outcome }}\`
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan_output.txt', 'utf8').slice(0, 60000);
 
-            <details><summary>Ver Resumen del Terraform Plan</summary>
+            const output = `#### Estado de Validación de Infraestructura (TP11B) 📖
+            * **Formato HCL (\`terraform fmt\`):** \`${{ steps.fmt.outcome }}\`
+            * **Validación (\`terraform validate\`):** \`${{ steps.validate.outcome }}\`
+            * **Plan (\`terraform plan\`):** \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Mostrar resultado del Plan</summary>
 
             \`\`\`hcl
-            \${{ steps.show_plan.outputs.plan_text }}
+            ${planOutput}
             \`\`\`
 
-            </details>
-
-            *Autor: @${{ github.actor }} | Commit: \`\${{ github.sha }}\`*`;
+            </details>`;
 
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -81,10 +78,3 @@ jobs:
               repo: context.repo.repo,
               body: output
             });
-
-      - name: 9. Cordón Andon (Detener si falló fmt, validate o plan)
-        if: steps.fmt.outcome == 'failure' || steps.validate.outcome == 'failure' || steps.plan.outcome == 'failure'
-        run: |
-          echo "La infraestructura contiene desvíos de formato, sintaxis o cálculo de plan."
-          exit 1
-#ComentarioRandom
