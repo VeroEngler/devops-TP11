@@ -1,0 +1,80 @@
+name: "Terraform PR Review (Plan as Comment)"
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - 'modules/**'
+      - '.github/workflows/**'
+
+jobs:
+  pr-check:
+    name: "Terraform Lint, Validate & Plan"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: Preparar terraform.tfvars para CI
+        run: |
+          cp terraform.tfvars.example terraform.tfvars
+          sed -i 's/backend_replicas.*/backend_replicas = 3/' terraform.tfvars
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan
+          terraform show -no-color tfplan > plan_output.txt
+
+      - name: Publicar Plan como Comentario en PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('plan_output.txt', 'utf8').slice(0, 60000);
+
+            const output = `#### Estado de Validación de Infraestructura (TP11B) 📖
+            * **Formato HCL (\`terraform fmt\`):** \`${{ steps.fmt.outcome }}\`
+            * **Validación (\`terraform validate\`):** \`${{ steps.validate.outcome }}\`
+            * **Plan (\`terraform plan\`):** \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Mostrar resultado del Plan</summary>
+
+            \`\`\`hcl
+            ${planOutput}
+            \`\`\`
+
+            </details>`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });

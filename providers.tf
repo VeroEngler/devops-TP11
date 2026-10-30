@@ -1,11 +1,9 @@
-# ============================================
-# providers.tf — Configuración del provider
-# TP11 — Plan DevOps Operaciones1
-# ============================================
-
+# ==============================================================================
+# providers.tf — Configuración de proveedores y backend
+# TP11B — Operaciones 1
+# ==============================================================================
 terraform {
   required_version = ">= 1.6.0"
-
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
@@ -13,14 +11,12 @@ terraform {
     }
   }
 
-  # En producción el state va en S3, GCS o Terraform Cloud
-  # Para este ejercicio usamos local
+  # En este ejercicio académico almacenamos el estado en el backend local del host
   backend "local" {
     path = "terraform.tfstate"
   }
 }
 
 provider "docker" {
-  # Conecta al Docker daemon local via socket
   host = "unix:///var/run/docker.sock"
 }
