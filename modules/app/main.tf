@@ -1,4 +1,4 @@
- # ============================================
+# ============================================
 # modules/app/main.tf
 # Crea los contenedores Docker de la app
 # ============================================
@@ -22,7 +22,7 @@ terraform {
 # ── Imágenes (pull desde registry) ───────────────────────
 resource "docker_image" "postgres" {
   name         = var.postgres_image
-  keep_locally = true    # no borrar la imagen al destroy
+  keep_locally = true # no borrar la imagen al destroy
 }
 
 resource "docker_image" "backend" {
@@ -59,7 +59,7 @@ resource "docker_container" "postgres" {
   # Conectar a la red de la app
   networks_advanced {
     name    = var.app_network_name
-    aliases = ["postgres"]    # hostname dentro de la red
+    aliases = ["postgres"] # hostname dentro de la red
   }
 
   # Healthcheck interno
@@ -91,7 +91,7 @@ resource "docker_container" "postgres" {
 
 # ── Contenedor Backend ────────────────────────────────────
 
-  resource "docker_container" "backend" {
+resource "docker_container" "backend" {
   count = var.backend_replicas
   name  = "${var.project_name}-backend-${var.environment}-${count.index}"
   image = docker_image.backend.image_id
@@ -198,4 +198,4 @@ resource "docker_container" "frontend" {
     label = "managed-by"
     value = "terraform"
   }
-} 
+}
